@@ -1,7 +1,7 @@
 # Deploy Goose AEO on Cloud Run (Weekly Thursday)
 
 This runbook deploys:
-- a public Goose AEO dashboard on Cloud Run (protected with Basic Auth),
+- a public Goose AEO dashboard on Cloud Run (protected with Google Workspace login),
 - a weekly Cloud Run Job that runs every Thursday,
 - shared persistent data so the dashboard shows historical runs/audits,
 - GitHub Actions based deploy + weekly execution for long-term maintenance.
@@ -9,6 +9,7 @@ This runbook deploys:
 Production sync target for Clinikally:
 - deploys are driven by GitHub Actions,
 - the weekly run is driven by GitHub Actions executing the Cloud Run Job,
+- dashboard access is gated by Google sign-in for verified `@clinikally.com` accounts,
 - Cloud Scheduler is not used for weekly execution.
 
 ## 1) Prerequisites
@@ -20,6 +21,7 @@ Production sync target for Clinikally:
   - `.goose-aeo.yml`
   - `goose-aeo.db`
 - GitHub CLI authenticated if you want to set repo Actions vars/secrets from the command line.
+- Google Workspace available for the Clinikally domain.
 
 ## 2) Recommended runtime settings (cost-safe defaults)
 
@@ -32,24 +34,27 @@ These defaults are baked into the runner:
 
 You can override via Cloud Run Job env vars later.
 
-## 3) Set environment variables locally
+## 3) Prepare Google OAuth for the dashboard
+
+Create a Google OAuth 2.0 **Web application** credential for the dashboard.
+
+Required runtime values:
 
 ```bash
 export PROJECT_ID="goose-aeo-clinikally-20260504"
 export REGION="us-central1"
 export SERVICE_ACCOUNT="goose-aeo-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
 export GOOSE_AEO_DASHBOARD_ALLOWED_EMAIL_DOMAIN="clinikally.com"
-export GOOSE_AEO_DASHBOARD_SHARED_PASSWORD="replace-with-team-shared-password"
+export GOOSE_AEO_DASHBOARD_BASE_URL="https://YOUR_CLOUD_RUN_DASHBOARD_URL"
+export GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_ID="your-google-client-id"
+export GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_SECRET="your-google-client-secret"
+export GOOSE_AEO_DASHBOARD_SESSION_SECRET="replace-with-long-random-secret"
 ```
 
-Optional legacy fixed-user auth mode is still supported by the dashboard server:
-
-```bash
-export GOOSE_AEO_DASHBOARD_BASIC_AUTH_USER="admin"
-export GOOSE_AEO_DASHBOARD_BASIC_AUTH_PASSWORD="replace-with-strong-password"
-```
-
-For Clinikally production, use domain-based auth with `@clinikally.com` plus the shared password.
+In Google OAuth client configuration:
+- Authorized redirect URI:
+  - `${GOOSE_AEO_DASHBOARD_BASE_URL}/auth/google/callback`
+- The app should sign users in with Google and the server will only allow verified `@clinikally.com` accounts.
 
 ## 4) Create service account and minimum IAM roles
 
@@ -72,23 +77,16 @@ chmod +x deploy/cloudrun/create-secrets.sh
 Required for deploy:
 - `GOOSE_AEO_OPENAI_API_KEY`
 - `GOOSE_AEO_DASHBOARD_ALLOWED_EMAIL_DOMAIN`
-- `GOOSE_AEO_DASHBOARD_SHARED_PASSWORD`
+- `GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_ID`
+- `GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_SECRET`
+- `GOOSE_AEO_DASHBOARD_SESSION_SECRET`
+- `GOOSE_AEO_DASHBOARD_BASE_URL`
 
 Optional provider secrets:
 - `GOOSE_AEO_PERPLEXITY_API_KEY`
 - `GOOSE_AEO_CLAUDE_API_KEY`
 - `GOOSE_AEO_GEMINI_API_KEY`
 - `GOOSE_AEO_GROK_API_KEY`
-
-Optional legacy fixed-user auth secrets:
-- `GOOSE_AEO_DASHBOARD_BASIC_AUTH_USER`
-- `GOOSE_AEO_DASHBOARD_BASIC_AUTH_PASSWORD`
-
-Auth modes supported:
-- fixed user/password (`GOOSE_AEO_DASHBOARD_BASIC_AUTH_USER` + `GOOSE_AEO_DASHBOARD_BASIC_AUTH_PASSWORD`)
-- email-domain mode (`GOOSE_AEO_DASHBOARD_ALLOWED_EMAIL_DOMAIN` + `GOOSE_AEO_DASHBOARD_SHARED_PASSWORD`)
-
-For Clinikally production, use email-domain mode with `GOOSE_AEO_DASHBOARD_ALLOWED_EMAIL_DOMAIN=clinikally.com`.
 
 ## 6) Bootstrap persistent data
 
@@ -104,13 +102,13 @@ This uploads data to `gs://goose-aeo-data-${PROJECT_ID}`.
 ## 7) Configure GitHub Actions OIDC (one-time)
 
 ```bash
-export GITHUB_OWNER="gooseworks-ai"
+export GITHUB_OWNER="dishantgupta-clinikally"
 export GITHUB_REPO="goose-aeo"
 chmod +x deploy/cloudrun/setup-github-oidc.sh
 ./deploy/cloudrun/setup-github-oidc.sh
 ```
 
-Expected GitHub Actions settings for `gooseworks-ai/goose-aeo`:
+Expected GitHub Actions settings for `dishantgupta-clinikally/goose-aeo`:
 
 - **Repository Variable**
   - `GCP_PROJECT_ID=goose-aeo-clinikally-20260504`
@@ -122,11 +120,11 @@ Expected GitHub Actions settings for `gooseworks-ai/goose-aeo`:
 Set them with GitHub CLI:
 
 ```bash
-gh variable set GCP_PROJECT_ID --repo gooseworks-ai/goose-aeo --body "goose-aeo-clinikally-20260504"
+gh variable set GCP_PROJECT_ID --repo dishantgupta-clinikally/goose-aeo --body "goose-aeo-clinikally-20260504"
 
-gh secret set GCP_WORKLOAD_IDENTITY_PROVIDER --repo gooseworks-ai/goose-aeo --body "projects/475372317889/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
-gh secret set GCP_DEPLOY_SERVICE_ACCOUNT --repo gooseworks-ai/goose-aeo --body "goose-aeo-deploy@goose-aeo-clinikally-20260504.iam.gserviceaccount.com"
-gh secret set GCP_RUNTIME_SERVICE_ACCOUNT --repo gooseworks-ai/goose-aeo --body "goose-aeo-runtime@goose-aeo-clinikally-20260504.iam.gserviceaccount.com"
+gh secret set GCP_WORKLOAD_IDENTITY_PROVIDER --repo dishantgupta-clinikally/goose-aeo --body "projects/475372317889/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+gh secret set GCP_DEPLOY_SERVICE_ACCOUNT --repo dishantgupta-clinikally/goose-aeo --body "goose-aeo-deploy@goose-aeo-clinikally-20260504.iam.gserviceaccount.com"
+gh secret set GCP_RUNTIME_SERVICE_ACCOUNT --repo dishantgupta-clinikally/goose-aeo --body "goose-aeo-runtime@goose-aeo-clinikally-20260504.iam.gserviceaccount.com"
 ```
 
 ## 8) Trigger first deploy from GitHub
@@ -182,18 +180,21 @@ gcloud run jobs executions list --job goose-aeo-weekly --region "${REGION}" --pr
 
 Verify dashboard auth behavior:
 - open the dashboard URL,
-- sign in with any username ending in `@clinikally.com`,
-- use the shared password from `GOOSE_AEO_DASHBOARD_SHARED_PASSWORD`,
+- you should be redirected to Google sign-in,
+- sign in with a verified `@clinikally.com` Google account,
+- confirm non-`@clinikally.com` accounts are denied,
 - confirm `/healthz` responds without auth if needed for health checks.
 
 ## 12) Troubleshooting
 
 - `Missing required Secret Manager secret` during deploy:
   - create the missing secret and rerun the deploy workflow.
+- Google OAuth callback mismatch:
+  - verify `GOOSE_AEO_DASHBOARD_BASE_URL` and the Google OAuth redirect URI exactly match `${GOOSE_AEO_DASHBOARD_BASE_URL}/auth/google/callback`.
+- sign-in denied for valid user:
+  - verify the Google account email is verified and ends with `@clinikally.com`.
 - `Missing config at /var/lib/goose-aeo/.goose-aeo.yml`:
   - run `./deploy/cloudrun/bootstrap-data.sh` again.
-- 401 in dashboard:
-  - verify `GOOSE_AEO_DASHBOARD_ALLOWED_EMAIL_DOMAIN` and `GOOSE_AEO_DASHBOARD_SHARED_PASSWORD` are present and mapped.
 - weekly workflow not triggering:
   - check GitHub Actions schedule and repository Actions permissions.
 - deployment workflow auth errors:
@@ -208,13 +209,13 @@ Verify dashboard auth behavior:
 Disable weekly automation:
 
 ```bash
-gh workflow disable "Weekly AEO Run" --repo gooseworks-ai/goose-aeo
+gh workflow disable "Weekly AEO Run" --repo dishantgupta-clinikally/goose-aeo
 ```
 
 Re-enable later:
 
 ```bash
-gh workflow enable "Weekly AEO Run" --repo gooseworks-ai/goose-aeo
+gh workflow enable "Weekly AEO Run" --repo dishantgupta-clinikally/goose-aeo
 ```
 
 Redeploy the previous known-good revision if needed:

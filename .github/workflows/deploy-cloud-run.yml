@@ -121,7 +121,10 @@ jobs:
           required_secret_names=(
             GOOSE_AEO_OPENAI_API_KEY
             GOOSE_AEO_DASHBOARD_ALLOWED_EMAIL_DOMAIN
-            GOOSE_AEO_DASHBOARD_SHARED_PASSWORD
+            GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_ID
+            GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_SECRET
+            GOOSE_AEO_DASHBOARD_SESSION_SECRET
+            GOOSE_AEO_DASHBOARD_BASE_URL
           )
           optional_provider_secret_names=(
             GOOSE_AEO_PERPLEXITY_API_KEY
@@ -152,7 +155,10 @@ jobs:
           dashboard_secret_mappings=(
             "${common_secret_mappings[@]}"
             "GOOSE_AEO_DASHBOARD_ALLOWED_EMAIL_DOMAIN=GOOSE_AEO_DASHBOARD_ALLOWED_EMAIL_DOMAIN:latest"
-            "GOOSE_AEO_DASHBOARD_SHARED_PASSWORD=GOOSE_AEO_DASHBOARD_SHARED_PASSWORD:latest"
+            "GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_ID=GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_ID:latest"
+            "GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_SECRET=GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_SECRET:latest"
+            "GOOSE_AEO_DASHBOARD_SESSION_SECRET=GOOSE_AEO_DASHBOARD_SESSION_SECRET:latest"
+            "GOOSE_AEO_DASHBOARD_BASE_URL=GOOSE_AEO_DASHBOARD_BASE_URL:latest"
           )
           job_secret_mappings=("${common_secret_mappings[@]}")
 

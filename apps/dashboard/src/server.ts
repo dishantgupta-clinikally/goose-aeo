@@ -1,7 +1,10 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import cookieSession from 'cookie-session'
 import express from 'express'
+import passport from 'passport'
+import { Strategy as GoogleStrategy, type Profile } from 'passport-google-oauth20'
 import { AEOClient } from '@goose-aeo/core'
 
 interface ServerOptions {
@@ -12,44 +15,46 @@ interface ServerOptions {
   appRoot?: string
 }
 
-const timingSafeEqual = (left: string, right: string): boolean => {
-  if (left.length !== right.length) {
-    return false
-  }
-
-  let diff = 0
-  for (let index = 0; index < left.length; index += 1) {
-    diff |= left.charCodeAt(index) ^ right.charCodeAt(index)
-  }
-
-  return diff === 0
+interface AuthenticatedUser {
+  email: string
+  name: string
 }
 
-const parseBasicAuthHeader = (headerValue: string | undefined): { username: string; password: string } | null => {
-  if (!headerValue || !headerValue.startsWith('Basic ')) {
-    return null
-  }
-
-  const encoded = headerValue.slice('Basic '.length).trim()
-  if (!encoded) {
-    return null
-  }
-
-  const decoded = Buffer.from(encoded, 'base64').toString('utf8')
-  const separatorIndex = decoded.indexOf(':')
-  if (separatorIndex < 0) {
-    return null
-  }
-
-  return {
-    username: decoded.slice(0, separatorIndex),
-    password: decoded.slice(separatorIndex + 1),
+declare global {
+  namespace Express {
+    interface User extends AuthenticatedUser {}
   }
 }
 
 const parseIntParam = (value: string | undefined, fallback: number): number => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+const requireEnv = (name: string): string => {
+  const value = process.env[name]?.trim()
+  if (!value) {
+    throw new Error(`Missing required environment variable ${name}`)
+  }
+
+  return value
+}
+
+const resolveCallbackUrl = (baseUrl: string): string => {
+  const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
+  return `${normalizedBaseUrl}/auth/google/callback`
+}
+
+const extractEmail = (profile: Profile): { email: string; verified: boolean } | null => {
+  const account = profile.emails?.find((candidate) => candidate.value)
+  if (!account?.value) {
+    return null
+  }
+
+  return {
+    email: account.value.trim().toLowerCase(),
+    verified: account.verified ?? false,
+  }
 }
 
 const withClient = async <T>(options: ServerOptions, fn: (client: AEOClient) => Promise<T>): Promise<T> => {
@@ -69,54 +74,142 @@ const withClient = async <T>(options: ServerOptions, fn: (client: AEOClient) => 
 export async function startDashboardServer(options: ServerOptions = {}) {
   const app = express()
   const port = options.port ?? 3847
-  const basicAuthUser = process.env.GOOSE_AEO_DASHBOARD_BASIC_AUTH_USER
-  const basicAuthPassword = process.env.GOOSE_AEO_DASHBOARD_BASIC_AUTH_PASSWORD
-  const allowedEmailDomain = process.env.GOOSE_AEO_DASHBOARD_ALLOWED_EMAIL_DOMAIN
-    ?.trim()
-    .replace(/^@+/, '')
-    .toLowerCase()
-  const sharedPassword = process.env.GOOSE_AEO_DASHBOARD_SHARED_PASSWORD
-  const basicAuthEnabled = Boolean(
-    (basicAuthUser && basicAuthPassword) || (allowedEmailDomain && sharedPassword),
-  )
   const appRoot =
     options.appRoot ??
     path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+  const googleClientId = requireEnv('GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_ID')
+  const googleClientSecret = requireEnv('GOOSE_AEO_DASHBOARD_GOOGLE_CLIENT_SECRET')
+  const baseUrl = requireEnv('GOOSE_AEO_DASHBOARD_BASE_URL')
+  const sessionSecret = requireEnv('GOOSE_AEO_DASHBOARD_SESSION_SECRET')
+  const allowedEmailDomain = requireEnv('GOOSE_AEO_DASHBOARD_ALLOWED_EMAIL_DOMAIN')
+    .replace(/^@+/, '')
+    .toLowerCase()
+  const callbackUrl = resolveCallbackUrl(baseUrl)
 
-  if (basicAuthEnabled) {
-    app.use((req, res, next) => {
-      if (req.path === '/healthz') {
-        next()
-        return
-      }
+  app.set('trust proxy', 1)
 
-      const parsed = parseBasicAuthHeader(req.headers.authorization)
-      if (parsed) {
-        if (allowedEmailDomain && sharedPassword) {
-          const normalizedUser = parsed.username.trim().toLowerCase()
-          const domainMatch = normalizedUser.endsWith(`@${allowedEmailDomain}`)
-          if (domainMatch && timingSafeEqual(parsed.password, sharedPassword)) {
-            next()
-            return
-          }
-        } else if (
-          basicAuthUser &&
-          basicAuthPassword &&
-          timingSafeEqual(parsed.username, basicAuthUser) &&
-          timingSafeEqual(parsed.password, basicAuthPassword)
-        ) {
-          next()
+  passport.serializeUser((user, done) => {
+    done(null, user)
+  })
+
+  passport.deserializeUser<AuthenticatedUser>((user, done) => {
+    done(null, user)
+  })
+
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: googleClientId,
+        clientSecret: googleClientSecret,
+        callbackURL: callbackUrl,
+      },
+      (_accessToken, _refreshToken, profile, done) => {
+        const account = extractEmail(profile)
+        if (!account?.verified) {
+          done(null, false, { message: 'Verified Google email is required' })
           return
         }
-      }
 
-      res.setHeader('WWW-Authenticate', 'Basic realm="Goose AEO Dashboard"')
-      res.status(401).json({ error: 'Authentication required' })
-    })
-  }
+        if (!account.email.endsWith(`@${allowedEmailDomain}`)) {
+          done(null, false, { message: 'Google Workspace domain is not allowed' })
+          return
+        }
+
+        done(null, {
+          email: account.email,
+          name: profile.displayName || account.email,
+        })
+      },
+    ),
+  )
+
+  app.use(
+    cookieSession({
+      name: 'goose-aeo-dashboard-session',
+      keys: [sessionSecret],
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: baseUrl.startsWith('https://'),
+    }),
+  )
+  app.use(passport.initialize())
+  app.use(passport.session())
 
   app.get('/healthz', (_req, res) => {
     res.status(200).json({ ok: true })
+  })
+
+  app.get('/auth/google', (req, res, next) => {
+    const state = typeof req.query.return_to === 'string' ? req.query.return_to : '/'
+    passport.authenticate('google', {
+      scope: ['openid', 'profile', 'email'],
+      hd: allowedEmailDomain,
+      state,
+    })(req, res, next)
+  })
+
+  app.get(
+    '/auth/google/callback',
+    passport.authenticate('google', { failureRedirect: '/auth/unauthorized', session: true }),
+    (req, res) => {
+      const destination = typeof req.query.state === 'string' && req.query.state.startsWith('/')
+        ? req.query.state
+        : '/'
+      res.redirect(destination)
+    },
+  )
+
+  app.get('/auth/me', (req, res) => {
+    if (!req.isAuthenticated()) {
+      res.status(401).json({ authenticated: false })
+      return
+    }
+
+    res.json({
+      authenticated: true,
+      user: req.user,
+    })
+  })
+
+  app.get('/auth/logout', (req, res, next) => {
+    req.logout((error) => {
+      if (error) {
+        next(error)
+        return
+      }
+
+      req.session = null
+      res.redirect('/auth/signed-out')
+    })
+  })
+
+  app.get('/auth/unauthorized', (_req, res) => {
+    res.status(403).type('html').send('<h1>Access denied</h1><p>Please sign in with a verified @clinikally.com Google account.</p>')
+  })
+
+  app.get('/auth/signed-out', (_req, res) => {
+    res.status(200).type('html').send('<h1>Signed out</h1><p><a href="/auth/google">Sign in again</a></p>')
+  })
+
+  app.use((req, res, next) => {
+    if (req.path === '/healthz' || req.path.startsWith('/auth/')) {
+      next()
+      return
+    }
+
+    if (req.isAuthenticated()) {
+      next()
+      return
+    }
+
+    if (req.path.startsWith('/api/')) {
+      res.status(401).json({ error: 'Authentication required' })
+      return
+    }
+
+    const returnTo = req.originalUrl && req.originalUrl.startsWith('/') ? req.originalUrl : '/'
+    res.redirect(`/auth/google?return_to=${encodeURIComponent(returnTo)}`)
   })
 
   app.get('/api/status', async (_req, res) => {
