@@ -13,7 +13,7 @@ COPY packages packages
 COPY apps apps
 COPY pricing.json pricing.json
 
-RUN npm run build --workspace goose-aeo-dashboard
+RUN npx turbo run build --filter=goose-aeo-dashboard
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
