@@ -25,6 +25,7 @@ const dataFetcher = async <T,>(path: string): Promise<T> => {
 
 export function App() {
   const [isReady, setIsReady] = useState(false)
+  const [user, setUser] = useState<AuthState['user'] | undefined>()
 
   useEffect(() => {
     let isCancelled = false
@@ -47,6 +48,7 @@ export function App() {
       }
 
       if (!isCancelled) {
+        setUser(payload.user)
         setIsReady(true)
       }
     }
@@ -66,5 +68,5 @@ export function App() {
     return null
   }
 
-  return <AEODashboard dataFetcher={dataFetcher} companyName="Goose AEO" />
+  return <AEODashboard dataFetcher={dataFetcher} companyName="Goose AEO" user={user} />
 }

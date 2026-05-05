@@ -25,7 +25,7 @@ const pageNames: Record<PageId, string> = {
   audit: 'Audit',
 }
 
-export function AEODashboard({ dataFetcher, companyName }: AEODashboardProps) {
+export function AEODashboard({ dataFetcher, companyName, user }: AEODashboardProps) {
   const [activePage, setActivePage] = useState<PageId>('overview')
   const [responseFilters, setResponseFilters] = useState<ResponseFilters | undefined>()
   const { range: timeRange, setRange: setTimeRange } = useTimeRange()
@@ -73,6 +73,7 @@ export function AEODashboard({ dataFetcher, companyName }: AEODashboardProps) {
         pageName={pageNames[activePage]}
         timeRange={timeRange}
         onTimeRangeChange={setTimeRange}
+        user={user}
       >
         {renderPage()}
       </PageLayout>

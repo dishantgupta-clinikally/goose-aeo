@@ -185,11 +185,55 @@ export async function startDashboardServer(options: ServerOptions = {}) {
   })
 
   app.get('/auth/unauthorized', (_req, res) => {
-    res.status(403).type('html').send('<h1>Access denied</h1><p>Please sign in with a verified @clinikally.com Google account.</p>')
+    res.status(403).type('html').send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Access Denied - Goose AEO</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f2f1f0; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+            .card { background: white; padding: 2rem; border-radius: 8px; border: 1px border-[#e7e5e4]; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+            h1 { color: #0c0a09; font-size: 1.5rem; margin-top: 0; }
+            p { color: #78716c; line-height: 1.5; }
+            a { display: inline-block; margin-top: 1.5rem; background: #0c0a09; color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 500; }
+            a:hover { background: #262423; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>Access denied</h1>
+            <p>Please sign in with a verified @${allowedEmailDomain} Google account to access this dashboard.</p>
+            <a href="/auth/google">Sign in with Google</a>
+          </div>
+        </body>
+      </html>
+    `)
   })
 
   app.get('/auth/signed-out', (_req, res) => {
-    res.status(200).type('html').send('<h1>Signed out</h1><p><a href="/auth/google">Sign in again</a></p>')
+    res.status(200).type('html').send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Signed Out - Goose AEO</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f2f1f0; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+            .card { background: white; padding: 2rem; border-radius: 8px; border: 1px border-[#e7e5e4]; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+            h1 { color: #0c0a09; font-size: 1.5rem; margin-top: 0; }
+            p { color: #78716c; line-height: 1.5; }
+            a { display: inline-block; margin-top: 1.5rem; background: #0c0a09; color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 500; }
+            a:hover { background: #262423; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>Signed out</h1>
+            <p>You have been successfully signed out.</p>
+            <a href="/auth/google">Sign in again</a>
+          </div>
+        </body>
+      </html>
+    `)
   })
 
   app.use((req, res, next) => {

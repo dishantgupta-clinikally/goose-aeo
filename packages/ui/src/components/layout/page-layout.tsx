@@ -11,6 +11,10 @@ interface PageLayoutProps {
   pageName: string
   timeRange: TimeRange
   onTimeRangeChange: (range: TimeRange) => void
+  user?: {
+    email: string
+    name: string
+  }
   children: ReactNode
 }
 
@@ -21,6 +25,7 @@ export function PageLayout({
   pageName,
   timeRange,
   onTimeRangeChange,
+  user,
   children,
 }: PageLayoutProps) {
   return (
@@ -33,6 +38,7 @@ export function PageLayout({
           companyName={companyName}
           timeRange={timeRange}
           onTimeRangeChange={onTimeRangeChange}
+          user={user}
         />
 
         <main className="flex-1 overflow-y-auto p-6">

@@ -3,6 +3,10 @@ export type AEODataFetcher = <T>(path: string) => Promise<T>
 export interface AEODashboardProps {
   dataFetcher: AEODataFetcher
   companyName?: string
+  user?: {
+    email: string
+    name: string
+  }
 }
 
 export type PageId =
