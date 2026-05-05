@@ -9,4 +9,4 @@ coverage
 tmp
 .DS_Store
 .goose-aeo.yml
-package-lock.json
+# package-lock.json intentionally tracked for Cloud Run builds
