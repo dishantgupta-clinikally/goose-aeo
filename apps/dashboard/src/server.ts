@@ -133,6 +133,22 @@ export async function startDashboardServer(options: ServerOptions = {}) {
       secure: baseUrl.startsWith('https://'),
     }),
   )
+
+  // Patch for passport >= 0.6.0 expecting regenerate/save on session
+  app.use((req, _res, next) => {
+    if (req.session && !req.session.regenerate) {
+      req.session.regenerate = (cb: any) => {
+        cb()
+      }
+    }
+    if (req.session && !req.session.save) {
+      req.session.save = (cb: any) => {
+        cb()
+      }
+    }
+    next()
+  })
+
   app.use(passport.initialize())
   app.use(passport.session())
 
