@@ -218,7 +218,7 @@ jobs:
             --service-account "${{ secrets.GCP_RUNTIME_SERVICE_ACCOUNT }}" \
             --cpu 1 \
             --memory 1Gi \
-            --max-retries 1 \
+            --max-retries 0 \
             --task-timeout 3600 \
             --set-env-vars "GOOSE_AEO_DATA_CWD=${{ env.DATA_MOUNT_PATH }},GOOSE_AEO_QUERY_LIMIT=25,GOOSE_AEO_RUN_CONCURRENCY=1,GOOSE_AEO_BUDGET_LIMIT_USD=20,GOOSE_AEO_AUDIT_PAGES=25,GOOSE_AEO_CONFIG_PATH=${{ env.DATA_MOUNT_PATH }}/.goose-aeo.yml" \
             --set-secrets "${{ env.JOB_SECRET_MAPPINGS }}" \
